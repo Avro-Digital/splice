@@ -1,0 +1,91 @@
+-- Copyright (c) 2024 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+-- | The `LockingRules` network singleton: DSO-signed, long-lived configuration
+-- for CIP-0105 / CIP-0116 capital locking, modeled on `AmuletRules`
+-- (`daml/splice-amulet/daml/Splice/AmuletRules.daml`).
+--
+-- It holds the network-wide locking parameters that governance controls
+-- centrally — primarily the set of vest schedules a lock may select — plus the
+-- choices to evolve them. Per-lock parameters that legitimately vary (the
+-- chosen schedule, beneficiary, holder, authorization sets) live on the
+-- per-lock `LockContext` (Phase 0.1), not here.
+module Splice.DSO.Locking.Rules where
+
+-- | A named linear vesting schedule that a lock may select.
+data VestSchedule = VestSchedule
+  with
+    name : Text
+      -- ^ Stable identifier for the schedule, e.g. "SV" or "FA".
+    totalVestingDays : Decimal
+      -- ^ Linear vest duration in days. CIP-0105 SV = 365.25; CIP-0116 FA = 60.
+  deriving (Eq, Ord, Show)
+
+-- | Result of `LockingRules_LookupVestSchedule`.
+data LockingRules_LookupVestScheduleResult = LockingRules_LookupVestScheduleResult
+  with
+    schedule : Optional VestSchedule
+      -- ^ The resolved schedule, or `None` if no schedule with that name is allowed.
+  deriving (Eq, Show)
+
+-- | Result of `LockingRules_AddVestSchedule`.
+data LockingRules_AddVestScheduleResult = LockingRules_AddVestScheduleResult
+  with
+    newRulesCid : ContractId LockingRules
+  deriving (Eq, Show)
+
+-- | Result of `LockingRules_RemoveVestSchedule`.
+data LockingRules_RemoveVestScheduleResult = LockingRules_RemoveVestScheduleResult
+  with
+    newRulesCid : ContractId LockingRules
+  deriving (Eq, Show)
+
+-- | DSO-signed network singleton of locking parameters + governance choices.
+template LockingRules
+  with
+    dso : Party
+      -- ^ The DSO party; sole signatory and (for now) the governance controller.
+    allowedVestSchedules : [VestSchedule]
+      -- ^ The vest schedules a lock may select. Governance-extensible per CIP-0105 §4.2.4.
+  where
+    signatory dso
+
+    -- | Read-only: resolve a vest schedule by name. Used by `LockContext`
+    -- creation (Phase 0.1 / 1.1) to validate the holder's chosen schedule.
+    nonconsuming choice LockingRules_LookupVestSchedule : LockingRules_LookupVestScheduleResult
+      with
+        scheduleName : Text
+      controller dso
+      do
+        pure LockingRules_LookupVestScheduleResult with
+          schedule = find (\s -> s.name == scheduleName) allowedVestSchedules
+
+    -- | Governance: add a new allowed vest schedule.
+    --
+    -- DSO-controlled for now; to be wired through `DsoRules`
+    -- `ActionRequiringConfirmation` (SV vote) in a follow-up integration ticket.
+    choice LockingRules_AddVestSchedule : LockingRules_AddVestScheduleResult
+      with
+        schedule : VestSchedule
+      controller dso
+      do
+        assertMsg ("LockingRules: vest schedule already exists: " <> schedule.name)
+          (not $ any (\s -> s.name == schedule.name) allowedVestSchedules)
+        assertMsg "LockingRules: totalVestingDays must be positive"
+          (schedule.totalVestingDays > 0.0)
+        newRulesCid <- create this with allowedVestSchedules = schedule :: allowedVestSchedules
+        pure LockingRules_AddVestScheduleResult with newRulesCid
+
+    -- | Governance: remove an allowed vest schedule by name. Existing locks
+    -- reference their schedule by value, so removal only affects future
+    -- lock creation.
+    choice LockingRules_RemoveVestSchedule : LockingRules_RemoveVestScheduleResult
+      with
+        scheduleName : Text
+      controller dso
+      do
+        let remaining = filter (\s -> s.name /= scheduleName) allowedVestSchedules
+        assertMsg ("LockingRules: no such vest schedule: " <> scheduleName)
+          (length remaining < length allowedVestSchedules)
+        newRulesCid <- create this with allowedVestSchedules = remaining
+        pure LockingRules_RemoveVestScheduleResult with newRulesCid

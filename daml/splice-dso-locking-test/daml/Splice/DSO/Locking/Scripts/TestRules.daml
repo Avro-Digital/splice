@@ -1,0 +1,45 @@
+-- Copyright (c) 2024 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+-- | Daml-script coverage for the `LockingRules` network singleton: create the
+-- singleton with the two CIP vest schedules, then exercise the governance
+-- amend choices (add + remove).
+module Splice.DSO.Locking.Scripts.TestRules where
+
+import Daml.Script
+import DA.Assert ((===))
+import Splice.DSO.Locking.Rules
+
+-- | Create `LockingRules` with the CIP-0105 (SV) and CIP-0116 (FA) schedules,
+-- then add and remove a third schedule via the governance choices.
+testCreateAndAmend : Script ()
+testCreateAndAmend = do
+  dso <- allocateParty "DSO"
+  let svSchedule = VestSchedule with name = "SV", totalVestingDays = 365.25
+      faSchedule = VestSchedule with name = "FA", totalVestingDays = 60.0
+
+  rulesCid <- submit dso $ createCmd LockingRules with
+    dso
+    allowedVestSchedules = [svSchedule, faSchedule]
+
+  -- lookup resolves a known schedule
+  svLookup <- submit dso $
+    exerciseCmd rulesCid (LockingRules_LookupVestSchedule with scheduleName = "SV")
+  svLookup.schedule === Some svSchedule
+
+  -- governance: add a new schedule
+  let fa90 = VestSchedule with name = "FA-90", totalVestingDays = 90.0
+  addResult <- submit dso $
+    exerciseCmd rulesCid (LockingRules_AddVestSchedule with schedule = fa90)
+  added <- submit dso $
+    exerciseCmd addResult.newRulesCid (LockingRules_LookupVestSchedule with scheduleName = "FA-90")
+  added.schedule === Some fa90
+
+  -- governance: remove it again
+  removeResult <- submit dso $
+    exerciseCmd addResult.newRulesCid (LockingRules_RemoveVestSchedule with scheduleName = "FA-90")
+  removed <- submit dso $
+    exerciseCmd removeResult.newRulesCid (LockingRules_LookupVestSchedule with scheduleName = "FA-90")
+  removed.schedule === None
+
+  pure ()
