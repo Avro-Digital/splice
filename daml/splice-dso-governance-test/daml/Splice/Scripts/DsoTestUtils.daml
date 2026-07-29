@@ -382,6 +382,7 @@ initiateAndCastVote app (initiator::others) targetEffectiveAt action = do
   where
     castVote dsoRulesCid requestCid sv = do
       result <- submit (actAs sv <> readAs app.dso) $ exerciseCmd dsoRulesCid DsoRules_CastVote with
+          voterParty = None
           requestCid
           vote = Vote with
             sv
@@ -406,6 +407,7 @@ initiateAndAcceptVote app (initiator::others) action = do
   where
     castVote dsoRulesCid requestCid sv = do
       result <- submit (actAs sv <> readAs app.dso) $ exerciseCmd dsoRulesCid DsoRules_CastVote with
+          voterParty = None
           requestCid
           vote = Vote with
             sv
@@ -419,6 +421,7 @@ castVote : AmuletApp -> Party -> ContractId VoteRequest -> Bool -> Script (Contr
 castVote app sv requestCid vote = do
     [(dsoRulesCid, _)] <- query @DsoRules app.dso
     result <- submit (actAs sv <> actAs app.dso) $ exerciseCmd dsoRulesCid DsoRules_CastVote with
+        voterParty = None
         requestCid = requestCid
         vote = Vote with
             sv = sv
