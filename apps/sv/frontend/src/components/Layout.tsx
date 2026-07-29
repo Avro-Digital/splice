@@ -11,6 +11,7 @@ import PartyIdScrollTracks from './PartyIdScrollTracks';
 import SvNavigationShell from './layout/SvNavigationShell';
 import { SvNavLinkItem } from './layout/SvNavLink';
 import { useFeatureSupport } from '../contexts/SvContext';
+import { useWalletSessionOptional } from '../dapp/WalletSessionContext';
 import { CONTENT_MAX_WIDTH, layoutTokens, PAGE_PX } from '../theme/tokens';
 import { useSvConfig } from '../utils';
 
@@ -42,6 +43,9 @@ const contentShellSx = {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const config = useSvConfig();
   const { logout } = useUserState();
+  // In dApp mode "logout" means disconnecting the wallet session.
+  const walletSession = useWalletSessionOptional();
+  const logoutHandler = walletSession ? () => void walletSession.disconnect() : logout;
   const location = useLocation();
   const featureSupport = useFeatureSupport();
 
@@ -75,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <Box bgcolor={layoutTokens.page} display="flex" flexDirection="column" minHeight="100vh">
       <GlobalStyles styles={partyIdScrollGlobalStyles} />
       <PartyIdScrollTracks />
-      <SvNavigationShell navLinks={navLinks} onLogout={logout} pageName={pageName} />
+      <SvNavigationShell navLinks={navLinks} onLogout={logoutHandler} pageName={pageName} />
 
       <Box sx={{ flex: 1, pb: 3 }}>
         <Container maxWidth={false} sx={contentShellSx}>
