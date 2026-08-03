@@ -9,6 +9,7 @@ import { SvNodeState } from '@daml.js/splice-dso-governance/lib/Splice/DSO/SvSta
 import { DsoRules } from '@daml.js/splice-dso-governance/lib/Splice/DsoRules';
 
 import { useDappDsoInfos } from '../dapp/useDappDsoInfos';
+import { useWalletSessionOptional } from '../dapp/WalletSessionContext';
 import { useDappModeConfig } from '../utils';
 import { useSvAdminClient } from './SvAdminServiceContext';
 
@@ -38,7 +39,9 @@ export const useDsoInfos = (): UseQueryResult<DsoInfo> => {
   // between renders.
   if (dappMode) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useDappDsoInfos(dappMode.svPartyId);
+    const walletSession = useWalletSessionOptional();
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return useDappDsoInfos(walletSession?.svPartyId);
   }
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return useBackendDsoInfos();
